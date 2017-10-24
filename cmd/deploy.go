@@ -14,10 +14,11 @@ import (
 
 	"encoding/json"
 
-	"github.com/Azure/acs-engine/pkg/armhelpers"
 	"github.com/Azure/acs-engine/pkg/acsengine"
 	"github.com/Azure/acs-engine/pkg/api"
+	"github.com/Azure/acs-engine/pkg/armhelpers"
 	"github.com/Azure/acs-engine/pkg/i18n"
+	"github.com/Azure/azure-sdk-for-go/arm/resources/resources"
 )
 
 const (
@@ -25,6 +26,10 @@ const (
 	deployShortDescription = "deploy an Azure Resource Manager template"
 	deployLongDescription  = "deploys an Azure Resource Manager template, parameters file and other assets for a cluster"
 )
+
+type DepConf struct {
+	ApiModelPath, Location, OutDir, ResourceGroup, SubscriptionId string
+}
 
 type deployCmd struct {
 	authArgs
@@ -50,6 +55,35 @@ type deployCmd struct {
 	location      string
 }
 
+func NewDeployer(dconf *DepConf, gconf *GenConf) (*deployCmd, error) {
+	dep := &deployCmd{
+		apimodelPath:    dconf.ApiModelPath,
+		location:        dconf.Location,
+		resourceGroup:   dconf.ResourceGroup,
+		outputDirectory: dconf.OutDir,
+	}
+
+	authArg := authArgs{
+		rawSubscriptionID:   dconf.SubscriptionId,
+		rawClientID:         gconf.CliProfile.ClientID,
+		AuthMethod:          "client_secret",
+		ClientSecret:        gconf.CliProfile.Secret,
+		RawAzureEnvironment: "AzurePublicCloud",
+	}
+
+	dep.authArgs = authArg
+
+	return dep, nil
+}
+
+func (dc *deployCmd) Deploy() (*resources.DeploymentExtended, error) {
+	err := dc.validatef()
+	if err != nil {
+		return nil, err
+	}
+	return dc.run()
+}
+
 func newDeployCmd() *cobra.Command {
 	dc := deployCmd{}
 
@@ -61,7 +95,8 @@ func newDeployCmd() *cobra.Command {
 			if err := dc.validate(cmd, args); err != nil {
 				log.Fatalf(fmt.Sprintf("error validating deployCmd: %s", err.Error()))
 			}
-			return dc.run()
+			_, err := dc.run()
+			return err
 		},
 	}
 
@@ -80,26 +115,8 @@ func newDeployCmd() *cobra.Command {
 	return deployCmd
 }
 
-func (dc *deployCmd) validate(cmd *cobra.Command, args []string) error {
+func (dc *deployCmd) validatef() error {
 	var err error
-
-	dc.locale, err = i18n.LoadTranslations()
-	if err != nil {
-		return fmt.Errorf(fmt.Sprintf("error loading translation files: %s", err.Error()))
-	}
-
-	if dc.apimodelPath == "" {
-		if len(args) == 1 {
-			dc.apimodelPath = args[0]
-		} else if len(args) > 1 {
-			cmd.Usage()
-			return fmt.Errorf(fmt.Sprintf("too many arguments were provided to 'deploy'"))
-		} else {
-			cmd.Usage()
-			return fmt.Errorf(fmt.Sprintf("--api-model was not supplied, nor was one specified as a positional argument"))
-		}
-	}
-
 	if _, err := os.Stat(dc.apimodelPath); os.IsNotExist(err) {
 		return fmt.Errorf(fmt.Sprintf("specified api model does not exist (%s)", dc.apimodelPath))
 	}
@@ -135,6 +152,29 @@ func (dc *deployCmd) validate(cmd *cobra.Command, args []string) error {
 	dc.random = rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	return nil
+}
+
+func (dc *deployCmd) validate(cmd *cobra.Command, args []string) error {
+	var err error
+
+	dc.locale, err = i18n.LoadTranslations()
+	if err != nil {
+		return fmt.Errorf(fmt.Sprintf("error loading translation files: %s", err.Error()))
+	}
+
+	if dc.apimodelPath == "" {
+		if len(args) == 1 {
+			dc.apimodelPath = args[0]
+		} else if len(args) > 1 {
+			cmd.Usage()
+			return fmt.Errorf(fmt.Sprintf("too many arguments were provided to 'deploy'"))
+		} else {
+			cmd.Usage()
+			return fmt.Errorf(fmt.Sprintf("--api-model was not supplied, nor was one specified as a positional argument"))
+		}
+	}
+
+	return dc.validatef()
 }
 
 func autofillApimodel(dc *deployCmd) {
@@ -242,7 +282,7 @@ func revalidateApimodel(apiloader *api.Apiloader, containerService *api.Containe
 	return apiloader.DeserializeContainerService(rawVersionedAPIModel, true, nil)
 }
 
-func (dc *deployCmd) run() error {
+func (dc *deployCmd) run() (*resources.DeploymentExtended, error) {
 	ctx := acsengine.Context{
 		Translator: &i18n.Translator{
 			Locale: dc.locale,
@@ -292,7 +332,7 @@ func (dc *deployCmd) run() error {
 
 	deploymentSuffix := dc.random.Int31()
 
-	_, err = dc.client.DeployTemplate(
+	res, err := dc.client.DeployTemplate(
 		dc.resourceGroup,
 		fmt.Sprintf("%s-%d", dc.resourceGroup, deploymentSuffix),
 		templateJSON,
@@ -302,5 +342,5 @@ func (dc *deployCmd) run() error {
 		log.Fatalln(err)
 	}
 
-	return nil
+	return res, nil
 }

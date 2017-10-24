@@ -7,12 +7,14 @@ import (
 	"os"
 	"path"
 
+	"encoding/json"
 	"github.com/Azure/acs-engine/pkg/acsengine"
 	"github.com/Azure/acs-engine/pkg/api"
 	"github.com/Azure/acs-engine/pkg/i18n"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"gopkg.in/leonelquinteros/gotext.v1"
+	"strings"
 )
 
 const (
@@ -36,12 +38,46 @@ type generateCmd struct {
 	locale           *gotext.Locale
 }
 
+type Model struct {
+	APIVersion string         `json:"apiVersion"`
+	Props      api.Properties `json:"properties,omitempty"`
+}
+
+type GenConf struct {
+	ApiConfPath, OutDir, Name, SSHKey string
+	CliProfile                        *api.ServicePrincipalProfile
+}
+
 // TODO we should not have a config file, we should take it from somewhere
-func NewGenerator(configPath, outDir string) *generateCmd {
-	var gen generateCmd
-	gen.apimodelPath = configPath
-	gen.outputDirectory = outDir
-	return &gen
+func NewGenerator(conf *GenConf) (*generateCmd, error) {
+	f, err := os.Open(conf.ApiConfPath)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	data, err := ioutil.ReadAll(f)
+	if err != nil {
+		return nil, err
+	}
+
+	model := Model{}
+	if err := json.Unmarshal(data, &model); err != nil {
+		return nil, err
+	}
+
+	model.Props.ServicePrincipalProfile = conf.CliProfile
+	model.Props.MasterProfile.DNSPrefix = conf.Name
+	model.Props.LinuxProfile.SSH.PublicKeys = []api.PublicKey{{KeyData: conf.SSHKey}}
+
+	gen := generateCmd{}
+	gen.apimodelPath = conf.ApiConfPath
+	gen.outputDirectory = conf.OutDir
+
+	if err := gen.getContService(&model); err != nil {
+		return nil, err
+	}
+	return &gen, nil
 }
 
 func newGenerateCmd() *cobra.Command {
@@ -71,6 +107,30 @@ func newGenerateCmd() *cobra.Command {
 	return generateCmd
 }
 
+func (gc *generateCmd) getContService(m *Model) error {
+	var err error
+	apiloader := &api.Apiloader{
+		Translator: &i18n.Translator{
+			Locale: gc.locale,
+		},
+	}
+
+	contents, err := json.Marshal(m)
+	if err != nil {
+		return err
+	}
+
+	scont := strings.Replace(string(contents), "\"subnet\":\"\",", "", -1)
+
+	//gc.containerService, gc.apiVersion, err = apiloader.LoadContainerServiceFromFile(gc.apimodelPath, true, nil)
+	gc.containerService, gc.apiVersion, err = apiloader.DeserializeContainerService([]byte(scont), true, nil)
+
+	if err != nil {
+		return fmt.Errorf(fmt.Sprintf("error parsing the api model: %s", err.Error()))
+	}
+	return nil
+}
+
 func (gc *generateCmd) validatef() error {
 	var caCertificateBytes []byte
 	var caKeyBytes []byte
@@ -78,16 +138,6 @@ func (gc *generateCmd) validatef() error {
 
 	if _, err := os.Stat(gc.apimodelPath); os.IsNotExist(err) {
 		return fmt.Errorf(fmt.Sprintf("specified api model does not exist (%s)", gc.apimodelPath))
-	}
-
-	apiloader := &api.Apiloader{
-		Translator: &i18n.Translator{
-			Locale: gc.locale,
-		},
-	}
-	gc.containerService, gc.apiVersion, err = apiloader.LoadContainerServiceFromFile(gc.apimodelPath, true, nil)
-	if err != nil {
-		return fmt.Errorf(fmt.Sprintf("error parsing the api model: %s", err.Error()))
 	}
 
 	if gc.outputDirectory == "" {
@@ -186,33 +236,9 @@ func (gc *generateCmd) run() error {
 	return nil
 }
 
-func (gc *generateCmd) updateSSHKey(sshKeyPath string) error {
-	if _, err := os.Stat(sshKeyPath); os.IsNotExist(err) {
-		return fmt.Errorf("keyfile not found")
-	}
-	f, err := os.Open(sshKeyPath)
-	if err != nil {
-		return err
-	}
-	data, err := ioutil.ReadAll(f)
-	if err != nil {
-		return err
-	}
-
-	keys := []api.PublicKey{{KeyData: string(data)}}
-	gc.containerService.Properties.LinuxProfile.SSH.PublicKeys = keys
-	return nil
-}
-
-func (gc *generateCmd) Generate(sshKeyPath string) error {
+func (gc *generateCmd) Generate() error {
 	if err := gc.validatef(); err != nil {
 		return err
 	}
-	if err := gc.updateSSHKey(sshKeyPath); err != nil {
-		return err
-	}
-	if err := gc.run(); err != nil {
-		return err
-	}
-	return nil
+	return gc.run()
 }

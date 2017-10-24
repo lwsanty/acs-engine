@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"path"
 
-	"github.com/lwsanty/acs-engine/pkg/api"
-	"github.com/lwsanty/acs-engine/pkg/i18n"
+	"github.com/Azure/acs-engine/pkg/api"
+	"github.com/Azure/acs-engine/pkg/i18n"
 )
 
 // ArtifactWriter represents the object that writes artifacts

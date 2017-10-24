@@ -12,7 +12,7 @@ import (
 	"github.com/Azure/acs-engine/pkg/armhelpers"
 	"github.com/Azure/acs-engine/pkg/i18n"
 	"github.com/Azure/acs-engine/pkg/operations/kubernetesupgrade"
-	"github.com/leonelquinteros/gotext"
+	"gopkg.in/leonelquinteros/gotext.v1"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"

@@ -12,7 +12,7 @@ import (
 	"github.com/Azure/acs-engine/pkg/api/v20170131"
 	"github.com/Azure/acs-engine/pkg/api/v20170701"
 	"github.com/Azure/acs-engine/pkg/api/vlabs"
-	"github.com/lwsanty/acs-engine/pkg/i18n"
+	"github.com/Azure/acs-engine/pkg/i18n"
 	log "github.com/sirupsen/logrus"
 )
 

@@ -7,12 +7,12 @@ import (
 	"os"
 	"path"
 
-	"github.com/lwsanty/acs-engine/pkg/acsengine"
-	"github.com/lwsanty/acs-engine/pkg/api"
-	"github.com/lwsanty/acs-engine/pkg/i18n"
-	"gopkg.in/leonelquinteros/gotext.v1"
+	"github.com/Azure/acs-engine/pkg/acsengine"
+	"github.com/Azure/acs-engine/pkg/api"
+	"github.com/Azure/acs-engine/pkg/i18n"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	"gopkg.in/leonelquinteros/gotext.v1"
 )
 
 const (
@@ -34,6 +34,14 @@ type generateCmd struct {
 	containerService *api.ContainerService
 	apiVersion       string
 	locale           *gotext.Locale
+}
+
+// TODO we should not have a config file, we should take it from somewhere
+func NewGenerator(configPath, outDir string) *generateCmd {
+	var gen generateCmd
+	gen.apimodelPath = configPath
+	gen.outputDirectory = outDir
+	return &gen
 }
 
 func newGenerateCmd() *cobra.Command {
@@ -63,27 +71,10 @@ func newGenerateCmd() *cobra.Command {
 	return generateCmd
 }
 
-func (gc *generateCmd) validate(cmd *cobra.Command, args []string) error {
+func (gc *generateCmd) validatef() error {
 	var caCertificateBytes []byte
 	var caKeyBytes []byte
 	var err error
-
-	gc.locale, err = i18n.LoadTranslations()
-	if err != nil {
-		return fmt.Errorf(fmt.Sprintf("error loading translation files: %s", err.Error()))
-	}
-
-	if gc.apimodelPath == "" {
-		if len(args) == 1 {
-			gc.apimodelPath = args[0]
-		} else if len(args) > 1 {
-			cmd.Usage()
-			return errors.New("too many arguments were provided to 'generate'")
-		} else {
-			cmd.Usage()
-			return errors.New("--api-model was not supplied, nor was one specified as a positional argument")
-		}
-	}
 
 	if _, err := os.Stat(gc.apimodelPath); os.IsNotExist(err) {
 		return fmt.Errorf(fmt.Sprintf("specified api model does not exist (%s)", gc.apimodelPath))
@@ -130,6 +121,31 @@ func (gc *generateCmd) validate(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+func (gc *generateCmd) validate(cmd *cobra.Command, args []string) error {
+	var err error
+	gc.locale, err = i18n.LoadTranslations()
+	if err != nil {
+		return fmt.Errorf(fmt.Sprintf("error loading translation files: %s", err.Error()))
+	}
+
+	if gc.apimodelPath == "" {
+		if len(args) == 1 {
+			gc.apimodelPath = args[0]
+		} else if len(args) > 1 {
+			if cmd != nil {
+				cmd.Usage()
+			}
+			return errors.New("too many arguments were provided to 'generate'")
+		} else {
+			if cmd != nil {
+				cmd.Usage()
+			}
+			return errors.New("--api-model was not supplied, nor was one specified as a positional argument")
+		}
+	}
+	return gc.validatef()
+}
+
 func (gc *generateCmd) run() error {
 	log.Infoln(fmt.Sprintf("Generating assets into %s...", gc.outputDirectory))
 
@@ -167,5 +183,36 @@ func (gc *generateCmd) run() error {
 		log.Fatalf("error writing artifacts: %s \n", err.Error())
 	}
 
+	return nil
+}
+
+func (gc *generateCmd) updateSSHKey(sshKeyPath string) error {
+	if _, err := os.Stat(sshKeyPath); os.IsNotExist(err) {
+		return fmt.Errorf("keyfile not found")
+	}
+	f, err := os.Open(sshKeyPath)
+	if err != nil {
+		return err
+	}
+	data, err := ioutil.ReadAll(f)
+	if err != nil {
+		return err
+	}
+
+	keys := []api.PublicKey{{KeyData: string(data)}}
+	gc.containerService.Properties.LinuxProfile.SSH.PublicKeys = keys
+	return nil
+}
+
+func (gc *generateCmd) Generate(sshKeyPath string) error {
+	if err := gc.validatef(); err != nil {
+		return err
+	}
+	if err := gc.updateSSHKey(sshKeyPath); err != nil {
+		return err
+	}
+	if err := gc.run(); err != nil {
+		return err
+	}
 	return nil
 }

@@ -9,7 +9,7 @@ import (
 
 	"path"
 
-	"github.com/leonelquinteros/gotext"
+	"gopkg.in/leonelquinteros/gotext.v1"
 )
 
 func loadSystemLanguage() string {

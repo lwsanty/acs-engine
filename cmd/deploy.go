@@ -8,16 +8,16 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/leonelquinteros/gotext"
+	"gopkg.in/leonelquinteros/gotext.v1"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
 	"encoding/json"
 
-	"github.com/Azure/acs-engine/pkg/acsengine"
-	"github.com/Azure/acs-engine/pkg/api"
+	"github.com/lwsanty/acs-engine/pkg/acsengine"
+	"github.com/lwsanty/acs-engine/pkg/api"
 	"github.com/Azure/acs-engine/pkg/armhelpers"
-	"github.com/Azure/acs-engine/pkg/i18n"
+	"github.com/lwsanty/acs-engine/pkg/i18n"
 )
 
 const (

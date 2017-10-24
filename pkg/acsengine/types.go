@@ -4,7 +4,7 @@ import (
 	"github.com/Azure/acs-engine/pkg/api"
 	"github.com/Azure/acs-engine/pkg/api/v20160330"
 	"github.com/Azure/acs-engine/pkg/api/vlabs"
-	"github.com/Azure/acs-engine/pkg/i18n"
+	"github.com/lwsanty/acs-engine/pkg/i18n"
 )
 
 // DCOSNodeType represents the type of DCOS Node

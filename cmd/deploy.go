@@ -75,10 +75,10 @@ func NewDeployer(dconf *DepConf, gconf *GenConf) (*deployCmd, error) {
 	return dep, nil
 }
 
-func (dc *deployCmd) Deploy() (string, error) {
+func (dc *deployCmd) Deploy() (string, string, error) {
 	err := dc.validatef()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	return dc.run()
 }
@@ -94,7 +94,7 @@ func newDeployCmd() *cobra.Command {
 			if err := dc.validate(cmd, args); err != nil {
 				log.Fatalf(fmt.Sprintf("error validating deployCmd: %s", err.Error()))
 			}
-			_, err := dc.run()
+			_, _, err := dc.run()
 			return err
 		},
 	}
@@ -281,7 +281,7 @@ func revalidateApimodel(apiloader *api.Apiloader, containerService *api.Containe
 	return apiloader.DeserializeContainerService(rawVersionedAPIModel, true, nil)
 }
 
-func (dc *deployCmd) run() (string, error) {
+func (dc *deployCmd) run() (string, string, error) {
 	ctx := acsengine.Context{
 		Translator: &i18n.Translator{
 			Locale: dc.locale,
@@ -290,21 +290,20 @@ func (dc *deployCmd) run() (string, error) {
 
 	templateGenerator, err := acsengine.InitializeTemplateGenerator(ctx, dc.classicMode)
 	if err != nil {
-		log.Fatalln("failed to initialize template generator: %s", err.Error())
+		return "", "", fmt.Errorf("failed to initialize template generator: %s", err.Error())
 	}
 
 	template, parameters, certsgenerated, err := templateGenerator.GenerateTemplate(dc.containerService, acsengine.DefaultGeneratorCode)
 	if err != nil {
-		log.Fatalf("error generating template %s: %s", dc.apimodelPath, err.Error())
-		os.Exit(1)
+		return "", "", fmt.Errorf("error generating template %s: %s", dc.apimodelPath, err.Error())
 	}
 
 	if template, err = acsengine.PrettyPrintArmTemplate(template); err != nil {
-		log.Fatalf("error pretty printing template: %s \n", err.Error())
+		return "", "", fmt.Errorf("error pretty printing template: %s \n", err.Error())
 	}
 	var parametersFile string
 	if parametersFile, err = acsengine.BuildAzureParametersFile(parameters); err != nil {
-		log.Fatalf("error pretty printing template parameters: %s \n", err.Error())
+		return "", "", fmt.Errorf("error pretty printing template parameters: %s \n", err.Error())
 	}
 
 	writer := &acsengine.ArtifactWriter{
@@ -313,7 +312,7 @@ func (dc *deployCmd) run() (string, error) {
 		},
 	}
 	if err = writer.WriteTLSArtifacts(dc.containerService, dc.apiVersion, template, parametersFile, dc.outputDirectory, certsgenerated, dc.parametersOnly); err != nil {
-		log.Fatalf("error writing artifacts: %s \n", err.Error())
+		return "", "", fmt.Errorf("error writing artifacts: %s \n", err.Error())
 	}
 
 	templateJSON := make(map[string]interface{})
@@ -321,12 +320,12 @@ func (dc *deployCmd) run() (string, error) {
 
 	err = json.Unmarshal([]byte(template), &templateJSON)
 	if err != nil {
-		log.Fatalln(err)
+		return "", "", err
 	}
 
 	err = json.Unmarshal([]byte(parameters), &parametersJSON)
 	if err != nil {
-		log.Fatalln(err)
+		return "", "", err
 	}
 
 	deploymentSuffix := dc.random.Int31()
@@ -339,7 +338,7 @@ func (dc *deployCmd) run() (string, error) {
 		parametersJSON,
 		nil)
 	if err != nil {
-		log.Fatalln(err)
+		return "", "", err
 	}
-	return name, nil
+	return name, parametersFile, nil
 }

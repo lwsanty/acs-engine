@@ -77,6 +77,7 @@ func NewGenerator(conf *GenConf) (*generateCmd, error) {
 	if err := gen.getContService(&model); err != nil {
 		return nil, err
 	}
+
 	return &gen, nil
 }
 

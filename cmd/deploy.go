@@ -18,7 +18,6 @@ import (
 	"github.com/Azure/acs-engine/pkg/api"
 	"github.com/Azure/acs-engine/pkg/armhelpers"
 	"github.com/Azure/acs-engine/pkg/i18n"
-	"github.com/Azure/azure-sdk-for-go/arm/resources/resources"
 )
 
 const (
@@ -76,10 +75,10 @@ func NewDeployer(dconf *DepConf, gconf *GenConf) (*deployCmd, error) {
 	return dep, nil
 }
 
-func (dc *deployCmd) Deploy() (*resources.DeploymentExtended, error) {
+func (dc *deployCmd) Deploy() (string, error) {
 	err := dc.validatef()
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	return dc.run()
 }
@@ -282,7 +281,7 @@ func revalidateApimodel(apiloader *api.Apiloader, containerService *api.Containe
 	return apiloader.DeserializeContainerService(rawVersionedAPIModel, true, nil)
 }
 
-func (dc *deployCmd) run() (*resources.DeploymentExtended, error) {
+func (dc *deployCmd) run() (string, error) {
 	ctx := acsengine.Context{
 		Translator: &i18n.Translator{
 			Locale: dc.locale,
@@ -331,16 +330,16 @@ func (dc *deployCmd) run() (*resources.DeploymentExtended, error) {
 	}
 
 	deploymentSuffix := dc.random.Int31()
+	name := fmt.Sprintf("%s-%d", dc.resourceGroup, deploymentSuffix)
 
-	res, err := dc.client.DeployTemplate(
+	_, err = dc.client.DeployTemplate(
 		dc.resourceGroup,
-		fmt.Sprintf("%s-%d", dc.resourceGroup, deploymentSuffix),
+		name,
 		templateJSON,
 		parametersJSON,
 		nil)
 	if err != nil {
 		log.Fatalln(err)
 	}
-
-	return res, nil
+	return name, nil
 }
